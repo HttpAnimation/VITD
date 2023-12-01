@@ -1,86 +1,91 @@
+import requests
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, PhotoImage
+from PIL import ImageTk, Image
 import webbrowser
 
-class AppStoreApp:
-    def __init__(self, master):
-        self.master = master
-        self.master.title("VTID App Store")
-        self.master.geometry("800x600")
-        self.master.configure(bg="#1e1e1e")
+# Function to open URL in default browser
+def open_url(url):
+    webbrowser.open(url)
 
-        self.apps = []
-        self.load_apps()
+# Function to install app using flatpak
+def install_app(command):
+    messagebox.showinfo("Installation", f"Installing {command}...")
 
-        self.create_app_list()
+# Function to display app details when clicked
+def show_details(repo_name, app_name, app_icon, description, homepage):
+    top = tk.Toplevel()
+    top.title(app_name)
+    top.geometry("400x400")
 
-    def load_apps(self):
-        with open("repos.txt", "r") as file:
-            lines = file.readlines()
-            for i in range(0, len(lines), 6):
-                app_data = {
-                    "name": lines[i].strip(),
-                    "icon": lines[i+1].strip(),
-                    "install_command": lines[i+2].strip(),
-                    "description": lines[i+3].strip(),
-                    "homepage": lines[i+4].strip(),
-                }
-                self.apps.append(app_data)
+    icon_img = Image.open(requests.get(app_icon, stream=True).raw)
+    icon_img = icon_img.resize((128, 128), Image.ANTIALIAS)
+    icon_photo = ImageTk.PhotoImage(icon_img)
 
-    def create_app_list(self):
-        app_frame = ttk.Frame(self.master, padding=(10, 10), style="Dark.TFrame")
-        app_frame.grid(row=0, column=0, sticky=(tk.N, tk.W, tk.E, tk.S))
+    label_icon = tk.Label(top, image=icon_photo)
+    label_icon.pack()
 
-        for i, app in enumerate(self.apps):
-            app_button = ttk.Button(
-                app_frame,
-                text=app["name"],
-                image=tk.PhotoImage(file=app["icon"]),
-                compound=tk.TOP,
-                style="App.TButton",
-                command=lambda a=app: self.show_app_details(a)
-            )
-            app_button.grid(row=i // 3, column=i % 3, padx=10, pady=10)
+    label_name = tk.Label(top, text=app_name, font=("Helvetica", 16))
+    label_name.pack()
 
-    def show_app_details(self, app):
-        details_window = tk.Toplevel(self.master)
-        details_window.title(app["name"])
-        details_window.geometry("400x300")
-        details_window.configure(bg="#1e1e1e")
+    button_install = tk.Button(top, text="Install", command=lambda: install_app(description.split()[-1]))
+    button_install.pack()
 
-        name_label = ttk.Label(details_window, text=app["name"], font=("Helvetica", 16), foreground="white", background="#1e1e1e")
-        name_label.pack(pady=10)
+    button_homepage = tk.Button(top, text="Homepage", command=lambda: open_url(homepage))
+    button_homepage.pack()
 
-        icon_label = ttk.Label(details_window, image=tk.PhotoImage(file=app["icon"]), background="#1e1e1e")
-        icon_label.pack()
+    label_description = tk.Label(top, text=description, wraplength=350)
+    label_description.pack()
 
-        install_button = ttk.Button(details_window, text="Install", style="Install.TButton", command=lambda: self.install_app(app))
-        install_button.pack(pady=10)
+    top.mainloop()
 
-        description_label = ttk.Label(details_window, text=app["description"], wraplength=350, justify=tk.LEFT, foreground="white", background="#1e1e1e")
-        description_label.pack(pady=10)
+# Read the repos.txt file
+def read_repos_file(filename):
+    with open(filename, 'r') as file:
+        urls = file.readlines()
 
-        homepage_button = ttk.Button(details_window, text="App Homepage", command=lambda: webbrowser.open(app["homepage"]), style="Link.TButton")
-        homepage_button.pack(pady=10)
+    for url in urls:
+        url = url.strip()
+        if not url.startswith("https://"):
+            continue
 
-    def install_app(self, app):
-        # You can implement the installation logic here
-        print(f"Installing {app['name']} using command: {app['install_command']}")
+        # Read repo.txt from the URL
+        response = requests.get(f"{url}/repo.txt")
+        if response.status_code != 200:
+            continue
+        
+        # Parse the repo.txt content
+        repo_lines = response.text.strip().split('\n')
+        repo_name = repo_lines[0]
+        app_name = repo_lines[1]
+        app_icon = repo_lines[2]
+        install_command = repo_lines[3]
+        description = repo_lines[4]
+        homepage = repo_lines[5]
 
+        # Create a Tkinter window to display app information
+        window = tk.Tk()
+        window.title("VTID - Linux App Store")
+        window.geometry("400x400")
 
+        app_icon_img = Image.open(requests.get(app_icon, stream=True).raw)
+        app_icon_img = app_icon_img.resize((64, 64), Image.ANTIALIAS)
+        app_icon_photo = ImageTk.PhotoImage(app_icon_img)
+
+        label_app_icon = tk.Label(window, image=app_icon_photo)
+        label_app_icon.pack()
+
+        label_app_name = tk.Label(window, text=app_name, font=("Helvetica", 20))
+        label_app_name.pack()
+
+        button_app = tk.Button(window, text="View Details", command=lambda r=repo_name, n=app_name, i=app_icon, d=description, h=homepage: show_details(r, n, i, d, h))
+        button_app.pack()
+
+        window.mainloop()
+
+# Main function
 def main():
-    root = tk.Tk()
-    style = ttk.Style(root)
-    style.theme_use("clam")
-
-    style.configure("Dark.TFrame", background="#1e1e1e")
-    style.configure("App.TButton", background="#2e2e2e", foreground="white", padding=(10, 10))
-    style.configure("Install.TButton", background="#4CAF50", foreground="white", padding=(10, 10))
-    style.configure("Link.TButton", foreground="#1e90ff")
-
-    app = AppStoreApp(root)
-    root.mainloop()
-
+    read_repos_file("repos.txt")
 
 if __name__ == "__main__":
     main()
